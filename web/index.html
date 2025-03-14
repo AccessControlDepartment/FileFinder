@@ -3,42 +3,285 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dosya Arama</title>
+    <title>Find Everything</title>
     <script type="text/javascript" src="/eel.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 20px; }
-        input { padding: 10px; width: 300px; }
-        button { padding: 10px; margin-left: 10px; cursor: pointer; }
-        ul { list-style: none; padding: 0; }
-        li { margin: 5px 0; padding: 5px; background: #f4f4f4; border-radius: 5px; }
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #b3cccc;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 90%;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        input {
+            width: 70%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 15px;
+            background: #293d3d;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #476b6b;
+        }
+        table {
+            width: 100%;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+        th {
+            background: #293d3d;
+            color: white;
+        }
+        .action-buttons button {
+            margin: 5px;
+        }
+        #updateButton:hover {
+            background-color: #004d4d;  /* Butonun üzerine gelince renk değişimi */
+            transform: scale(1.1);  /* Buton biraz büyür */
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+          }
+          
+          .modal-content {
+            background-color: #fff;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 5px;
+            width: 50%;
+            box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2);
+          }
+          
+          .progress {
+            background-color: #f1f1f1;
+            height: 30px;
+            border-radius: 5px;
+            margin: 10px 0;
+            overflow: hidden;
+          }
+          
+          .progress-bar {
+            background-color: #4CAF50;
+            height: 30px;
+            border-radius: 5px;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+          }
     </style>
 </head>
 <body>
-    <h2>🔍 Dosya Arama</h2>
-    <input type="text" id="searchTerm" placeholder="Aranacak kelimeyi girin">
-    <button onclick="search()">Ara</button>
-    <h3>Sonuçlar:</h3>
-    <ul id="results"></ul>
+
+    <div class="container">
+        <div class="row d-flex">
+            <button id="updateButton" onclick="updateFileList()" style="margin-top: 10px; padding: 10px; background-color: #006666; color: white; border: none; cursor: pointer; font-size: large; transition: all 0.3s ease;">
+                ✔ Güncelle
+            </button>
+            <h2>🔍 Dosya Arama</h2>
+        </div>
+        
+        <input type="text" id="searchQuery" placeholder="Dosya adını girin..." onkeypress="checkEnter(event)">
+        <button onclick="searchFiles()">Ara</button>
+    
+        <div id="loadingMessage" style="display: none; font-size: 18px; color: #cc0000;">
+            Lütfen bekleyiniz...
+        </div>
+
+        <div id="updateMessage" style="display: none; font-size: 18px; color: #cc0000;">
+            Lütfen dosyayı güncelleyiniz...
+        </div>
+
+        <div id="progressModal" class="modal">
+            <div class="modal-content">
+              <h4 id="progressTitle">Veritabanı Güncelleniyor</h4>
+              <div class="progress">
+                <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+              </div>
+              <p id="progressMessage">İşlem başlatılıyor...</p>
+            </div>
+          </div>
+
+        <table id="resultsTable">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Dosya Adı</th>
+                    <th>İşlem</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="3">Sonuçlar burada görünecek...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
 
     <script>
-        function search() {
-            let term = document.getElementById("searchTerm").value;
-            document.getElementById("results").innerHTML = "<li>Aranıyor...</li>";
-
-            eel.search_files(term)(function(results) {
-                let resultList = document.getElementById("results");
-                resultList.innerHTML = "";
-                if (results.length === 0) {
-                    resultList.innerHTML = "<li>Sonuç bulunamadı</li>";
+        // Enter tuşuna basılınca arama yap
+        function checkEnter(event) {
+            if (event.key === "Enter") {
+                searchFiles();
+            }
+        }
+    
+        async function searchFiles() {
+            let query = document.getElementById("searchQuery").value.trim();
+            if (!query) {
+                alert("Lütfen bir kelime girin!");
+                return;
+            }
+            
+            document.getElementById("loadingMessage").style.display = "block"; // Bekleme mesajını göster
+            document.getElementById("updateMessage").style.display = "none";   // Güncelleme mesajını gizle
+    
+            // Veritabanının güncel olup olmadığını kontrol et
+            let isDatabaseUpdated = await eel.is_database_updated()();
+            
+            let results = await eel.search_file(query)();  // Python fonksiyonunu çağır
+    
+            document.getElementById("loadingMessage").style.display = "none"; // Bekleme mesajını gizle
+    
+            let tableBody = document.querySelector("#resultsTable tbody");
+            tableBody.innerHTML = "";
+    
+            if (results.length === 0) {
+                if (!isDatabaseUpdated) {
+                    // Veritabanı güncellenmemişse
+                    tableBody.innerHTML = "<tr><td colspan='3'>Veri yok!</td></tr>";
+                    document.getElementById("updateMessage").style.display = "block"; // Güncelleme mesajını göster
                 } else {
-                    results.forEach(path => {
-                        let li = document.createElement("li");
-                        li.textContent = path;
-                        resultList.appendChild(li);
-                    });
+                    // Veritabanı güncellenmişse
+                    tableBody.innerHTML = "<tr><td colspan='3'>Dosya bulunamadı!</td></tr>";
                 }
+                return;
+            }
+    
+            results.forEach((file, index) => {
+                let row = document.createElement("tr");
+    
+                let numCell = document.createElement("td");
+                numCell.innerText = index + 1;
+                row.appendChild(numCell);
+    
+                let nameCell = document.createElement("td");
+                nameCell.innerText = file.split("\\").pop();  // Dosya adını göster
+                row.appendChild(nameCell);
+    
+                let actionCell = document.createElement("td");
+                actionCell.classList.add("action-buttons");
+    
+                let folderBtn = document.createElement("button");
+                folderBtn.innerText = "📂 Klasöre Git";
+                folderBtn.onclick = () => openFileOrFolder(file, "folder");
+                actionCell.appendChild(folderBtn);
+    
+                let fileBtn = document.createElement("button");
+                fileBtn.innerText = "📄 Aç";
+                fileBtn.onclick = () => openFileOrFolder(file, "file");
+                actionCell.appendChild(fileBtn);
+    
+                row.appendChild(actionCell);
+                tableBody.appendChild(row);
             });
         }
-    </script>
+    
+        async function openFileOrFolder(filePath, action) {
+            let result = await eel.open_file_or_folder(filePath, action)();
+            if (result !== "Tamamlandı") {
+                alert(result);
+            }
+        }
+    
+        // **Güncelleme Butonu İşlevi**
+        async function updateFileList() {
+            let updateButton = document.getElementById("updateButton");
+            updateButton.innerText = "⏳ Güncelleniyor...";
+            updateButton.style.backgroundColor = "#FFA500"; // Turuncu renk
+
+            // İlerleme çubuğunu göster
+            document.getElementById('progressModal').style.display = 'block';
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').innerText = '0%';
+            document.getElementById('progressMessage').innerText = 'Güncelleme başlatılıyor...';
+            
+            // Güncelleme işlemini başlat
+            let result = await eel.update_file_list()();
+            
+            console.log(result); // Konsola sonucu yaz
+            
+            // İşlem sonucunu kontrol et ve buton metnini güncelle
+            if (result.includes("zaten güncel")) {
+                updateButton.innerText = "✔ Güncel";
+                updateButton.style.backgroundColor = "#006666"; // Yeşil-mavi
+            } else if (result.includes("Güncelleme Başarılı")) {
+                updateButton.innerText = "✔ Güncellendi";
+                updateButton.style.backgroundColor = "#006666"; // Yeşil-mavi
+            } else {
+                updateButton.innerText = "⚠️ Güncelleme";
+                updateButton.style.backgroundColor = "#FF6347"; // Hata durumunda kırmızı tonu
+            }
+        }
+        
+        eel.expose(updateProgress);
+        function updateProgress(percentage, message) {
+            document.getElementById('progressBar').style.width = percentage + '%';
+            document.getElementById('progressBar').innerText = percentage + '%';
+            document.getElementById('progressBar').setAttribute('aria-valuenow', percentage);
+            document.getElementById('progressMessage').innerText = message;
+            
+            // İlerleme modalını göster
+            document.getElementById('progressModal').style.display = 'block';
+            
+            // İşlem tamamlandığında (100%) modalı birkaç saniye sonra kapat
+            if (percentage >= 100) {
+                setTimeout(function() {
+                    document.getElementById('progressModal').style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        // Mevcut güncelleme fonksiyonunuzu güncelleme butonu için şu şekilde değiştirin:
+        function updateDatabase() {
+            // İlerleme çubuğunu göster
+            document.getElementById('progressModal').style.display = 'block';
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').innerText = '0%';
+            document.getElementById('progressMessage').innerText = 'Güncelleme başlatılıyor...';
+            
+            // Python fonksiyonunu çağır
+            eel.update_file_list()(function(result) {
+                // Bu callback, işlem tamamlandığında çalışır
+                console.log(result);
+            });
+        }
+    </script>   
+
 </body>
 </html>
